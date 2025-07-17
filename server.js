@@ -6,18 +6,13 @@ const path = require('path');
 const fs = require('fs');
 const { GridFSBucket } = require('mongodb');
 const crypto = require('crypto');
-const serverless = require('serverless-http');
 
 
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 // Middleware
-app.use(cors({
-  origin: 'https://www.smartphonecity.afterlife.org.in', // Your frontend URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 // app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json({ limit: '10mb' }));
@@ -1520,4 +1515,4 @@ app.get('/api/service-templates', (req, res) => {
 // })
 // .catch(err => console.error('MongoDB connection error:', err));
 
-module.exports.handler = serverless(app);
+module.exports = app;
