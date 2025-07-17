@@ -4,78 +4,149 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { GridFSBucket } = require('mongodb');
+const crypto = require('crypto');
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Your frontend URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+}));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.json({ limit: '10mb' }));
+
 
 // MongoDB Connection
 const MONGODB_URI = 'mongodb+srv://repairShop:repairShop@repairshopcluster.owizlev.mongodb.net/?retryWrites=true&w=majority&appName=repairShopCluster';
+let gfsBucket;
+
+// mongoose.connect(MONGODB_URI, {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true,
+//   retryWrites: true,
+//   w: 'majority'
+// })
+// .then(() => console.log('Successfully connected to MongoDB'))
+// .catch(err => console.error('MongoDB connection error:', err));
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   retryWrites: true,
   w: 'majority'
-})
-.then(() => console.log('Successfully connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+}).then(() => {
+  console.log('Successfully connected to MongoDB');
+  
+  // Initialize GridFSBucket
+  const db = mongoose.connection.db;
+  gfsBucket = new GridFSBucket(db, {
+    bucketName: 'uploads'
+  });
 
-// Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure storage for uploaded files
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
 });
 
-// File filter to accept only images
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only .jpeg, .jpg, and .png formats are allowed'), false);
-  }
-};
+// Add this temporary route to check indexes
+// app.get('/api/check-indexes', async (req, res) => {
+//   const mobileIndexes = await mongoose.connection.db.collection('mobiles').indexes();
+//   const laptopIndexes = await mongoose.connection.db.collection('laptops').indexes();
+//   res.json({ mobiles: mobileIndexes, laptops: laptopIndexes });
+// });
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-});
+// Add this temporary route to your server.js
+// app.get('/api/remove-bad-indexes', async (req, res) => {
+//   try {
+//     const db = mongoose.connection.db;
+    
+//     // Remove from both collections
+//     await db.collection('mobiles').dropIndex('id_1');
+//     await db.collection('laptops').dropIndex('id_1');
+    
+//     // Verify removal
+//     const newIndexes = {
+//       mobiles: await db.collection('mobiles').indexes(),
+//       laptops: await db.collection('laptops').indexes()
+//     };
+    
+//     res.json({
+//       message: 'Indexes removed successfully',
+//       remainingIndexes: newIndexes
+//     });
+//   } catch (err) {
+//     res.status(500).json({ 
+//       error: err.message,
+//       note: 'If indexes were already missing, this is fine' 
+//     });
+//   }
+// });
 
 // Product Schema
 const productSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  brand: { type: String, required: true },
-  image: { type: String, required: true },
-  price: { type: String, required: true },
+  name: { 
+    type: String, 
+    required: true,
+    trim: true,
+    maxlength: 100
+  },
+  brand: { 
+    type: String, 
+    required: true,
+    trim: true
+  },
+  image: { 
+    type: String, 
+    required: true
+  },
+  price: { 
+    type: String, 
+    required: true
+  },
   originalPrice: String,
   discount: String,
-  rating: { type: Number, min: 0, max: 5 },
-  reviews: Number,
+  rating: { 
+    type: Number, 
+    min: 0, 
+    max: 5,
+    default: 0
+  },
+  reviews: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
   features: [String],
-  specifications: Object,
+  specifications: {
+    type: Map,
+    of: String
+  },
   description: String,
-  inStock: Boolean,
+  inStock: {
+    type: Boolean,
+    default: true
+  },
   category: String,
-  type: { type: String, enum: ['mobile', 'laptop'], required: true }
-}, { timestamps: true });
+  type: { 
+    type: String, 
+    enum: ['mobile', 'laptop'], 
+    required: true 
+  }
+}, { 
+  timestamps: true,
+  id: false,
+  versionKey: false
+});
+
+mongoose.set('autoIndex', false);
 
 const Mobile = mongoose.model('Mobile', productSchema);
 const Laptop = mongoose.model('Laptop', productSchema);
@@ -171,6 +242,221 @@ const MobileBrand = mongoose.model('MobileBrand', mobileBrandSchema);
 const LaptopBrand = mongoose.model('LaptopBrand', laptopBrandSchema);
 const TabletBrand = mongoose.model('TabletBrand', tabletBrandSchema);
 const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
+
+
+// // Configure storage for uploaded files
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, uploadDir);
+//   },
+//   filename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+//     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+//   }
+// });
+
+// const upload = multer({ 
+//   storage: storage,
+//   fileFilter: fileFilter,
+//   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+// });
+
+
+let gfs;
+// conn.once('open', () => {
+//   // Initialize GridFS stream
+//   gfs = Grid(conn.db, mongoose.mongo);
+//   gfs.collection('uploads');
+// });
+
+const storage = new multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .jpeg, .jpg, and .png formats are allowed'), false);
+    }
+  }
+});
+
+// File filter to accept only images
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only .jpeg, .jpg, and .png formats are allowed'), false);
+  }
+};
+
+
+
+
+
+// // Add mobile product with image upload
+// app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: 'Image is required' });
+//     }
+
+//     const imagePath = `/uploads/${req.file.filename}`;
+//     const mobile = new Mobile({
+//       ...req.body,
+//       image: imagePath,
+//       type: 'mobile',
+//       features: req.body.features.split(',').map(f => f.trim()),
+//       rating: Number(req.body.rating),
+//       reviews: Number(req.body.reviews),
+//       inStock: req.body.inStock === 'true'
+//     });
+
+//     await mobile.save();
+//     res.status(201).json({ message: 'Mobile added successfully', product: mobile });
+
+
+
+// Route to serve images
+app.get('/api/images/:filename', (req, res) => {
+  if (!gfsBucket) {
+    return res.status(503).json({ error: 'Storage system not ready' });
+  }
+
+  const downloadStream = gfsBucket.openDownloadStreamByName(req.params.filename);
+  
+  downloadStream.on('error', () => {
+    res.status(404).json({ error: 'File not found' });
+  });
+  
+  downloadStream.pipe(res);
+});
+
+app.get('/api/products/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    if (!['mobile', 'laptop'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid product type' });
+    }
+
+    const Model = type === 'mobile' ? Mobile : Laptop;
+    const products = await Model.find();
+    res.json(products);
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.status(500).json({ error: 'Failed to fetch products' });
+  }
+});
+
+
+
+// Add mobile product
+app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image is required' });
+    }
+
+    if (!gfsBucket) {
+      return res.status(503).json({ error: 'Storage system not ready' });
+    }
+
+    // Generate unique filename
+    const filename = crypto.randomBytes(16).toString('hex') + path.extname(req.file.originalname);
+    
+    // Create upload stream
+    const uploadStream = gfsBucket.openUploadStream(filename, {
+      contentType: req.file.mimetype
+    });
+
+    uploadStream.on('error', () => {
+      res.status(500).json({ error: 'Failed to store image' });
+    });
+
+    uploadStream.on('finish', async () => {
+      try {
+        const imagePath = `/api/images/${filename}`;
+        const mobile = new Mobile({
+          ...req.body,
+          image: imagePath,
+          type: 'mobile',
+          features: req.body.features?.split(',').map(f => f.trim()) || [],
+          rating: Number(req.body.rating) || 0,
+          reviews: Number(req.body.reviews) || 0,
+          inStock: req.body.inStock === 'true'
+        });
+
+        await mobile.save();
+        res.status(201).json({ message: 'Mobile added successfully', product: mobile });
+      } catch (err) {
+        console.error('Error saving mobile:', err);
+        res.status(500).json({ error: 'Failed to save product' });
+      }
+    });
+
+    uploadStream.end(req.file.buffer);
+  } catch (err) {
+    console.error('Error adding mobile:', err);
+    res.status(500).json({ error: 'Failed to add mobile' });
+  }
+});
+
+app.post('/api/products/add-laptop', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image is required' });
+    }
+
+    if (!gfsBucket) {
+      return res.status(503).json({ error: 'Storage system not ready' });
+    }
+
+    // Generate unique filename
+    const filename = crypto.randomBytes(16).toString('hex') + path.extname(req.file.originalname);
+    
+    // Create upload stream
+    const uploadStream = gfsBucket.openUploadStream(filename, {
+      contentType: req.file.mimetype
+    });
+
+    uploadStream.on('error', () => {
+      res.status(500).json({ error: 'Failed to store image' });
+    });
+
+    uploadStream.on('finish', async () => {
+      try {
+        const imagePath = `/api/images/${filename}`;
+        const laptop = new Laptop({
+          ...req.body,
+          image: imagePath,
+          type: 'laptop',
+          features: req.body.features?.split(',').map(f => f.trim()) || [],
+          rating: Number(req.body.rating) || 0,
+          reviews: Number(req.body.reviews) || 0,
+          inStock: req.body.inStock === 'true'
+        });
+
+        await laptop.save();
+        res.status(201).json({ message: 'Laptop added successfully', product: laptop });
+      } catch (err) {
+        console.error('Error saving laptop:', err);
+        res.status(500).json({ error: 'Failed to save product' });
+      }
+    });
+
+    uploadStream.end(req.file.buffer);
+  } catch (err) {
+    console.error('Error adding laptop:', err);
+    res.status(500).json({ error: 'Failed to add laptop' });
+  }
+});
+
+
+
+
 
 // Updated helper function to handle all categories
 async function updateBrandCollection(category, brand, model) {
@@ -372,25 +658,26 @@ app.get('/api/repairs/consoles', async (req, res) => {
 
 // Existing Product Endpoints (kept from your original code)
 
-// Get all mobile products
-app.get('/api/products/mobiles', async (req, res) => {
-  try {
-    const mobiles = await Mobile.find().sort({ createdAt: -1 });
-    res.json(mobiles);
-  } catch (err) {
-    console.error('Error fetching mobiles:', err);
-    res.status(500).json({ message: 'Failed to fetch mobile products' });
-  }
-});
-
-// Get all laptop products
+// Get all laptops
 app.get('/api/products/laptops', async (req, res) => {
   try {
-    const laptops = await Laptop.find().sort({ createdAt: -1 });
+    const laptops = await Laptop.find();
     res.json(laptops);
   } catch (err) {
     console.error('Error fetching laptops:', err);
-    res.status(500).json({ message: 'Failed to fetch laptop products' });
+    res.status(500).json({ error: 'Failed to fetch laptops' });
+  }
+});
+
+// Get all mobiles
+app.get('/api/products/mobiles', async (req, res) => {
+  try {
+    const mobiles = await Mobile.find();
+    res.json(mobiles);
+    console.log(mobiles)
+  } catch (err) {
+    console.error('Error fetching mobiles:', err);
+    res.status(500).json({ error: 'Failed to fetch mobiles' });
   }
 });
 
@@ -411,69 +698,7 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// Add mobile product with image upload
-app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Image is required' });
-    }
 
-    const imagePath = `/uploads/${req.file.filename}`;
-    const mobile = new Mobile({
-      ...req.body,
-      image: imagePath,
-      type: 'mobile',
-      features: req.body.features.split(',').map(f => f.trim()),
-      rating: Number(req.body.rating),
-      reviews: Number(req.body.reviews),
-      inStock: req.body.inStock === 'true'
-    });
-
-    await mobile.save();
-    res.status(201).json({ message: 'Mobile added successfully', product: mobile });
-  } catch (err) {
-    console.error('Error adding mobile:', err);
-    
-    // Delete the uploaded file if there was an error
-    if (req.file) {
-      fs.unlinkSync(path.join(uploadDir, req.file.filename));
-    }
-    
-    res.status(500).json({ message: 'Failed to add mobile' });
-  }
-});
-
-// Add laptop product with image upload
-app.post('/api/products/add-laptop', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Image is required' });
-    }
-
-    const imagePath = `/uploads/${req.file.filename}`;
-    const laptop = new Laptop({
-      ...req.body,
-      image: imagePath,
-      type: 'laptop',
-      features: req.body.features.split(',').map(f => f.trim()),
-      rating: Number(req.body.rating),
-      reviews: Number(req.body.reviews),
-      inStock: req.body.inStock === 'true'
-    });
-
-    await laptop.save();
-    res.status(201).json({ message: 'Laptop added successfully', product: laptop });
-  } catch (err) {
-    console.error('Error adding laptop:', err);
-    
-    // Delete the uploaded file if there was an error
-    if (req.file) {
-      fs.unlinkSync(path.join(uploadDir, req.file.filename));
-    }
-    
-    res.status(500).json({ message: 'Failed to add laptop' });
-  }
-});
 
 // DELETE mobile by ID
 app.delete('/api/products/delete-mobile/:id', async (req, res) => {
@@ -1097,7 +1322,13 @@ app.get('/api/service-templates', (req, res) => {
 
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`MongoDB connected: ${mongoose.connection.readyState === 1 ? 'Yes' : 'No'}`);
-});
+// mongoose.connect(MONGODB_URI, {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true,
+//   retryWrites: true,
+//   w: 'majority'
+// })
+// .then(() => {
+//   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// })
+// .catch(err => console.error('MongoDB connection error:', err));
