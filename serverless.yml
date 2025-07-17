@@ -1,33 +1,37 @@
 service: repairshop-api
 
-frameworkVersion: '3'  # Use v3 to avoid login requirement in v4+
-
 provider:
   name: aws
   runtime: nodejs18.x
-  region: eu-west-3  # or us-east-1, choose the region you want
-  memorySize: 128
-  timeout: 10
+  region: eu-west-3  
+  environment:
+    MONGO_URI: ${env:MONGO_URI}
+  httpApi:
+    cors: 
+      allowedOrigins:
+        - https://www.smartphonecity.afterlife.org.in
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowedHeaders:
+        - Content-Type
+        - Authorization
 
 functions:
   app:
-    handler: server.handler
+    handler: lambda.handler
     events:
-      - http:
-          path: /
-          method: ANY
-      - http:
-          path: '{proxy+}'
-          method: ANY
+      - httpApi:
+          path: /{proxy+}
+          method: '*'
 
 plugins:
   - serverless-offline
 
 package:
   exclude:
-    - node_modules/**
-    - .git/**
-    - .vscode/**
-    - tests/**
-    - README.md
+    - node_modules/aws-sdk/**
 

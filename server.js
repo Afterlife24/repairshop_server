@@ -14,8 +14,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors({
-  origin: '*', // Your frontend URL
+  origin: 'https://www.smartphonecity.afterlife.org.in', // Your frontend URL
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
 }));
 app.use(express.json());
 // app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
