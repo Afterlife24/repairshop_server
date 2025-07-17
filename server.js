@@ -148,10 +148,42 @@ const productSchema = new mongoose.Schema({
 
 mongoose.set('autoIndex', false);
 
+const appointmentSchema = new mongoose.Schema({
+  deviceType: { type: String, required: true },
+  deviceName: { type: String, required: true },
+  subtype: { type: String, required: true },
+  subtypeName: { type: String, required: true },
+  brand: { type: String, required: true },
+  model: { type: String, required: true },
+  services: [{
+    id: String,
+    name: String,
+    price: Number,
+    description: String
+  }],
+  totalPrice: { type: Number, required: true },
+  customer: {
+    name: { type: String, required: true },
+    firstName: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: String
+  },
+  appointment: {
+    date: { type: String, required: true },
+    time: { type: String, required: true }
+  },
+  status: { type: String, default: 'pending' },
+  createdAt: { type: Date, default: Date.now }
+}, { collection: 'appointments' });
+
+
+
+
 const Mobile = mongoose.model('Mobile', productSchema);
 const Laptop = mongoose.model('Laptop', productSchema);
 const Tablet = mongoose.model('Tablet', productSchema);
 const Console = mongoose.model('Console', productSchema);
+const Appointment = mongoose.model('Appointment', appointmentSchema);
 
 
 const mobileRepairSchema = new mongoose.Schema({
@@ -243,6 +275,11 @@ const LaptopBrand = mongoose.model('LaptopBrand', laptopBrandSchema);
 const TabletBrand = mongoose.model('TabletBrand', tabletBrandSchema);
 const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
 
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // // Configure storage for uploaded files
 // const storage = multer.diskStorage({
@@ -972,24 +1009,24 @@ app.get('/api/repairs/:category', async (req, res) => {
   }
 });
 // Create appointment
-app.post('/api/appointments', async (req, res) => {
-  try {
-    // Here you would save the appointment to your database
-    // This is just a basic example
-    const appointmentData = req.body;
+// app.post('/api/appointments', async (req, res) => {
+//   try {
+//     // Here you would save the appointment to your database
+//     // This is just a basic example
+//     const appointmentData = req.body;
     
-    // Save to database (you'll need to create an Appointment model)
-    // const appointment = new Appointment(appointmentData);
-    // await appointment.save();
+//     // Save to database (you'll need to create an Appointment model)
+//     // const appointment = new Appointment(appointmentData);
+//     // await appointment.save();
     
-    res.status(201).json({ 
-      message: 'Appointment created successfully',
-      appointment: appointmentData
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+//     res.status(201).json({ 
+//       message: 'Appointment created successfully',
+//       appointment: appointmentData
+//     });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1287,6 +1324,151 @@ app.post('/api/repairs/:category/:repairId/options', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
+// app.post('/appointments', async (req, res) => {
+//   try {
+//     const {
+//       deviceType,
+//       deviceName,
+//       subtype,
+//       subtypeName,
+//       brand,
+//       model,
+//       services,
+//       totalPrice,
+//       customer,
+//       appointment
+//     } = req.body;
+
+//     // Validate required fields
+//     if (!deviceType || !brand || !model || !services || !customer || !appointment) {
+//       return res.status(400).json({ message: 'Données manquantes' });
+//     }
+
+//     // Here you would typically save to a database
+//     // For example, using MongoDB:
+//     const newAppointment = new Appointment({
+//       deviceType,
+//       deviceName,
+//       subtype,
+//       subtypeName,
+//       brand,
+//       model,
+//       services,
+//       totalPrice,
+//       customer,
+//       appointment,
+//       status: 'pending',
+//       createdAt: new Date()
+//     });
+//     console.log("new appointment:", newAppointment)
+//     const savedAppointment = await newAppointment.save();
+    
+//     res.status(201).json({
+//       message: 'Rendez-vous créé avec succès',
+//       appointment: savedAppointment
+//     });
+
+//   } catch (error) {
+//     console.error('Erreur:', error);
+//     res.status(500).json({ message: 'Erreur serveur' });
+//   }
+//   });
+
+
+
+app.post('/api/appointments', async (req, res) => {
+  
+  try {
+    const {
+      deviceType,
+      deviceName,
+      subtype,
+      subtypeName,
+      brand,
+      model,
+      services,
+      totalPrice,
+      customer,
+      appointment
+    } = req.body;
+
+    // Validate required fields
+    if (!deviceType || !brand || !model || !services || !customer || !appointment) {
+      return res.status(400).json({ message: 'Données manquantes' });
+    }
+    
+    // Create new appointment document
+    const newAppointment = new Appointment({
+      deviceType,
+      deviceName,
+      subtype,
+      subtypeName,
+      brand,
+      model,
+      services,
+      totalPrice,
+      customer: {
+        name: customer.name,
+        firstName: customer.firstName,
+        email: customer.email,
+        phone: customer.phone || ''
+      },
+      appointment: {
+        date: appointment.date,
+        time: appointment.time
+      }
+      // status and createdAt will be set automatically
+    });
+    
+    console.log("New appointment to be saved:", newAppointment);
+
+    // Save to MongoDB
+    const savedAppointment = await newAppointment.save();
+   
+    console.log("Appointment saved successfully:", savedAppointment);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Rendez-vous créé avec succès',
+      appointment: savedAppointment
+    });
+
+  } catch (error) {
+    console.error('Erreur:', error);
+    
+    // Handle duplicate key errors
+    if (error.name === 'MongoError' && error.code === 11000) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Un rendez-vous avec ces informations existe déjà' 
+      });
+    }
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = {};
+      Object.keys(error.errors).forEach(key => {
+        errors[key] = error.errors[key].message;
+      });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Erreur de validation',
+        errors 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Erreur serveur lors de la création du rendez-vous',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
