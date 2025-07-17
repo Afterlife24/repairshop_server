@@ -11,6 +11,7 @@ provider:
     cors: 
       allowedOrigins:
         - https://www.smartphonecity.afterlife.org.in
+        - https://www.smartphonecity-admin.afterlife.org.in
       allowedMethods:
         - GET
         - POST
