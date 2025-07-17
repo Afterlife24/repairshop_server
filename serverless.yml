@@ -1,5 +1,7 @@
 service: repairshop-api
 
+frameworkVersion: '3'  # Use v3 to avoid login requirement in v4+
+
 provider:
   name: aws
   runtime: nodejs18.x
