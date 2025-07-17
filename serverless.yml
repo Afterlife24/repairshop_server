@@ -1,0 +1,31 @@
+service: repairshop-api
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: eu-west-3  # or us-east-1, choose the region you want
+  memorySize: 128
+  timeout: 10
+
+functions:
+  app:
+    handler: server.handler
+    events:
+      - http:
+          path: /
+          method: ANY
+      - http:
+          path: '{proxy+}'
+          method: ANY
+
+plugins:
+  - serverless-offline
+
+package:
+  exclude:
+    - node_modules/**
+    - .git/**
+    - .vscode/**
+    - tests/**
+    - README.md
+

@@ -6,11 +6,12 @@ const path = require('path');
 const fs = require('fs');
 const { GridFSBucket } = require('mongodb');
 const crypto = require('crypto');
+const serverless = require('serverless-http');
+
 
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
 // Middleware
 app.use(cors({
   origin: '*', // Your frontend URL
@@ -48,9 +49,11 @@ mongoose.connect(MONGODB_URI, {
     bucketName: 'uploads'
   });
 
+  if (process.env.NODE_ENV !== 'lambda') {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+}
 }).catch(err => {
   console.error('MongoDB connection error:', err);
   process.exit(1);
@@ -96,6 +99,7 @@ const productSchema = new mongoose.Schema({
     type: String, 
     required: true,
     trim: true,
+
     maxlength: 100
   },
   brand: { 
@@ -1514,3 +1518,5 @@ app.get('/api/service-templates', (req, res) => {
 //   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 // })
 // .catch(err => console.error('MongoDB connection error:', err));
+
+module.exports.handler = serverless(app);

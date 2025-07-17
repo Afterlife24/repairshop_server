@@ -12,9 +12,11 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "serverless-offline": "^14.4.0"
   },
   "dependencies": {
+    "aws-serverless-express": "^3.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "express": "^4.19.2",
