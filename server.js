@@ -6,13 +6,17 @@ const path = require('path');
 const fs = require('fs');
 const { GridFSBucket } = require('mongodb');
 const crypto = require('crypto');
+const serverless = require('serverless-http');
 
 
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Your frontend URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+}));
 app.use(express.json());
 // app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json({ limit: '10mb' }));
@@ -55,39 +59,7 @@ mongoose.connect(MONGODB_URI, {
   process.exit(1);
 });
 
-// Add this temporary route to check indexes
-// app.get('/api/check-indexes', async (req, res) => {
-//   const mobileIndexes = await mongoose.connection.db.collection('mobiles').indexes();
-//   const laptopIndexes = await mongoose.connection.db.collection('laptops').indexes();
-//   res.json({ mobiles: mobileIndexes, laptops: laptopIndexes });
-// });
 
-// Add this temporary route to your server.js
-// app.get('/api/remove-bad-indexes', async (req, res) => {
-//   try {
-//     const db = mongoose.connection.db;
-    
-//     // Remove from both collections
-//     await db.collection('mobiles').dropIndex('id_1');
-//     await db.collection('laptops').dropIndex('id_1');
-    
-//     // Verify removal
-//     const newIndexes = {
-//       mobiles: await db.collection('mobiles').indexes(),
-//       laptops: await db.collection('laptops').indexes()
-//     };
-    
-//     res.json({
-//       message: 'Indexes removed successfully',
-//       remainingIndexes: newIndexes
-//     });
-//   } catch (err) {
-//     res.status(500).json({ 
-//       error: err.message,
-//       note: 'If indexes were already missing, this is fine' 
-//     });
-//   }
-// });
 
 // Product Schema
 const productSchema = new mongoose.Schema({
@@ -275,36 +247,13 @@ const LaptopBrand = mongoose.model('LaptopBrand', laptopBrandSchema);
 const TabletBrand = mongoose.model('TabletBrand', tabletBrandSchema);
 const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
 
-// Create uploads directory if it doesn't exist
-// const uploadDir = path.join(__dirname, 'uploads');
-// if (!fs.existsSync(uploadDir)) {
-//   fs.mkdirSync(uploadDir, { recursive: true });
-// }
 
-// // Configure storage for uploaded files
-// const storage = multer.diskStorage({
-//   destination: function (req, file, cb) {
-//     cb(null, uploadDir);
-//   },
-//   filename: function (req, file, cb) {
-//     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-//     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-//   }
-// });
 
-// const upload = multer({ 
-//   storage: storage,
-//   fileFilter: fileFilter,
-//   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-// });
+
 
 
 let gfs;
-// conn.once('open', () => {
-//   // Initialize GridFS stream
-//   gfs = Grid(conn.db, mongoose.mongo);
-//   gfs.collection('uploads');
-// });
+
 
 const storage = new multer.memoryStorage();
 const upload = multer({ 
@@ -329,32 +278,6 @@ const fileFilter = (req, file, cb) => {
     cb(new Error('Only .jpeg, .jpg, and .png formats are allowed'), false);
   }
 };
-
-
-
-
-
-// // Add mobile product with image upload
-// app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({ message: 'Image is required' });
-//     }
-
-//     const imagePath = `/uploads/${req.file.filename}`;
-//     const mobile = new Mobile({
-//       ...req.body,
-//       image: imagePath,
-//       type: 'mobile',
-//       features: req.body.features.split(',').map(f => f.trim()),
-//       rating: Number(req.body.rating),
-//       reviews: Number(req.body.reviews),
-//       inStock: req.body.inStock === 'true'
-//     });
-
-//     await mobile.save();
-//     res.status(201).json({ message: 'Mobile added successfully', product: mobile });
-
 
 
 // Route to serve images
@@ -802,14 +725,6 @@ app.use((err, req, res, next) => {
 });
 
 
-
-
-
-// In your Express backend (server.ts or similar)
-
-// Get brands by category
-// Get brands by category and optionally subtype
-// In your backend (server.js or similar)
 // Get brands by category
 app.get('/api/brands/:category', async (req, res) => {
   try {
@@ -1008,25 +923,6 @@ app.get('/api/repairs/:category', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// Create appointment
-// app.post('/api/appointments', async (req, res) => {
-//   try {
-//     // Here you would save the appointment to your database
-//     // This is just a basic example
-//     const appointmentData = req.body;
-    
-//     // Save to database (you'll need to create an Appointment model)
-//     // const appointment = new Appointment(appointmentData);
-//     // await appointment.save();
-    
-//     res.status(201).json({ 
-//       message: 'Appointment created successfully',
-//       appointment: appointmentData
-//     });
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1327,55 +1223,6 @@ app.post('/api/repairs/:category/:repairId/options', async (req, res) => {
 
 
 
-// app.post('/appointments', async (req, res) => {
-//   try {
-//     const {
-//       deviceType,
-//       deviceName,
-//       subtype,
-//       subtypeName,
-//       brand,
-//       model,
-//       services,
-//       totalPrice,
-//       customer,
-//       appointment
-//     } = req.body;
-
-//     // Validate required fields
-//     if (!deviceType || !brand || !model || !services || !customer || !appointment) {
-//       return res.status(400).json({ message: 'Données manquantes' });
-//     }
-
-//     // Here you would typically save to a database
-//     // For example, using MongoDB:
-//     const newAppointment = new Appointment({
-//       deviceType,
-//       deviceName,
-//       subtype,
-//       subtypeName,
-//       brand,
-//       model,
-//       services,
-//       totalPrice,
-//       customer,
-//       appointment,
-//       status: 'pending',
-//       createdAt: new Date()
-//     });
-//     console.log("new appointment:", newAppointment)
-//     const savedAppointment = await newAppointment.save();
-    
-//     res.status(201).json({
-//       message: 'Rendez-vous créé avec succès',
-//       appointment: savedAppointment
-//     });
-
-//   } catch (error) {
-//     console.error('Erreur:', error);
-//     res.status(500).json({ message: 'Erreur serveur' });
-//   }
-//   });
 
 
 
@@ -1470,6 +1317,181 @@ app.post('/api/appointments', async (req, res) => {
 
 
 
+// Get all appointments with filtering, sorting, and pagination
+app.get('/api/appointments', async (req, res) => {
+  try {
+    // Extract query parameters
+    const { 
+      page = 1, 
+      limit = 10, 
+      status, 
+      dateFrom, 
+      dateTo, 
+      search,
+      sortField = 'createdAt',
+      sortOrder = 'desc' 
+    } = req.query;
+
+    // Build the query
+    const query = {};
+    
+    // Status filter
+    if (status) {
+      query.status = status;
+    }
+    
+    // Date range filter
+    if (dateFrom || dateTo) {
+      query['appointment.date'] = {};
+      if (dateFrom) query['appointment.date'].$gte = new Date(dateFrom);
+      if (dateTo) query['appointment.date'].$lte = new Date(dateTo);
+    }
+    
+    // Search filter (searches customer name, email, and device model)
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      query.$or = [
+        { 'customer.name': searchRegex },
+        { 'customer.firstName': searchRegex },
+        { 'customer.email': searchRegex },
+        { model: searchRegex },
+        { brand: searchRegex }
+      ];
+    }
+
+    // Calculate skip for pagination
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination info
+    const total = await Appointment.countDocuments(query);
+
+    // Get appointments with sorting
+    const appointments = await Appointment.find(query)
+      .sort({ [sortField]: sortOrder === 'asc' ? 1 : -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Format dates for better display
+    const formattedAppointments = appointments.map(appt => ({
+      ...appt,
+      createdAt: new Date(appt.createdAt).toLocaleString(),
+      appointment: {
+        ...appt.appointment,
+        date: new Date(appt.appointment.date).toLocaleDateString(),
+        time: appt.appointment.time
+      }
+    }));
+
+    res.json({
+      success: true,
+      data: formattedAppointments,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching appointments:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch appointments',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
+// Get appointment by ID
+app.get('/api/appointments/:id', async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.id).lean();
+    
+    if (!appointment) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Appointment not found' 
+      });
+    }
+
+    // Format dates for better display
+    const formattedAppointment = {
+      ...appointment,
+      createdAt: new Date(appointment.createdAt).toLocaleString(),
+      appointment: {
+        ...appointment.appointment,
+        date: new Date(appointment.appointment.date).toLocaleDateString(),
+        time: appointment.appointment.time
+      }
+    };
+
+    res.json({
+      success: true,
+      data: formattedAppointment
+    });
+  } catch (err) {
+    console.error('Error fetching appointment:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch appointment',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
+// Update appointment status
+app.put('/api/appointments/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'confirmed', 'completed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid status value' 
+      });
+    }
+
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedAppointment) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Appointment not found' 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Appointment status updated',
+      data: updatedAppointment
+    });
+  } catch (err) {
+    console.error('Error updating appointment status:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update appointment status',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
+
+// PUT /api/appointments/:id/status
+app.put('/api/appointments/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const updated = await Appointment.findByIdAndUpdate(id, { status }, { new: true });
+  res.json({ success: true, data: updated });
+});
+
+
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Service templates data
@@ -1502,17 +1524,5 @@ app.get('/api/service-templates', (req, res) => {
   res.json(serviceTemplates);
 });
 
-
-// Start server
-// mongoose.connect(MONGODB_URI, {
-//   useNewUrlParser: true,
-//   useUnifiedTopology: true,
-//   retryWrites: true,
-//   w: 'majority'
-// })
-// .then(() => {
-//   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-// })
-// .catch(err => console.error('MongoDB connection error:', err));
 
 module.exports = app;
