@@ -276,10 +276,10 @@ const TabletBrand = mongoose.model('TabletBrand', tabletBrandSchema);
 const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
 
 // Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// const uploadDir = path.join(__dirname, 'uploads');
+// if (!fs.existsSync(uploadDir)) {
+//   fs.mkdirSync(uploadDir, { recursive: true });
+// }
 
 // // Configure storage for uploaded files
 // const storage = multer.diskStorage({
