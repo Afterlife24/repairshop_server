@@ -295,14 +295,19 @@ app.get('/api/images/:filename', (req, res) => {
   downloadStream.pipe(res);
 });
 
+// Update your route handler
 app.get('/api/products/:type', async (req, res) => {
   try {
     const { type } = req.params;
-    if (!['mobile', 'laptop'].includes(type)) {
+    
+    // Allow both singular and plural forms
+    const normalizedType = type.replace(/s$/, ''); // Remove trailing 's'
+    
+    if (!['mobile', 'laptop'].includes(normalizedType)) {
       return res.status(400).json({ error: 'Invalid product type' });
     }
 
-    const Model = type === 'mobile' ? Mobile : Laptop;
+    const Model = normalizedType === 'mobile' ? Mobile : Laptop;
     const products = await Model.find();
     res.json(products);
   } catch (err) {
@@ -340,12 +345,19 @@ app.post('/api/products/add-mobile', upload.single('image'), async (req, res) =>
       try {
         const imagePath = `/api/images/${filename}`;
         const mobile = new Mobile({
-          ...req.body,
+          id: req.body.id,
+          name: req.body.name,
+          brand: req.body.brand,
+          price: req.body.price,
+          originalPrice: req.body.originalPrice,
+          discount: req.body.discount,
           image: imagePath,
           type: 'mobile',
-          features: req.body.features?.split(',').map(f => f.trim()) || [],
+          features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
           rating: Number(req.body.rating) || 0,
           reviews: Number(req.body.reviews) || 0,
+          description: req.body.description,
+          category: req.body.category,
           inStock: req.body.inStock === 'true'
         });
 
@@ -353,14 +365,14 @@ app.post('/api/products/add-mobile', upload.single('image'), async (req, res) =>
         res.status(201).json({ message: 'Mobile added successfully', product: mobile });
       } catch (err) {
         console.error('Error saving mobile:', err);
-        res.status(500).json({ error: 'Failed to save product' });
+        res.status(500).json({ error: 'Failed to save product', details: err.message });
       }
     });
 
     uploadStream.end(req.file.buffer);
   } catch (err) {
     console.error('Error adding mobile:', err);
-    res.status(500).json({ error: 'Failed to add mobile' });
+    res.status(500).json({ error: 'Failed to add mobile', details: err.message });
   }
 });
 
@@ -390,12 +402,19 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
       try {
         const imagePath = `/api/images/${filename}`;
         const laptop = new Laptop({
-          ...req.body,
+          id: req.body.id,
+          name: req.body.name,
+          brand: req.body.brand,
+          price: req.body.price,
+          originalPrice: req.body.originalPrice,
+          discount: req.body.discount,
           image: imagePath,
           type: 'laptop',
-          features: req.body.features?.split(',').map(f => f.trim()) || [],
+          features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
           rating: Number(req.body.rating) || 0,
           reviews: Number(req.body.reviews) || 0,
+          description: req.body.description,
+          category: req.body.category,
           inStock: req.body.inStock === 'true'
         });
 
@@ -403,17 +422,16 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
         res.status(201).json({ message: 'Laptop added successfully', product: laptop });
       } catch (err) {
         console.error('Error saving laptop:', err);
-        res.status(500).json({ error: 'Failed to save product' });
+        res.status(500).json({ error: 'Failed to save product', details: err.message });
       }
     });
 
     uploadStream.end(req.file.buffer);
   } catch (err) {
     console.error('Error adding laptop:', err);
-    res.status(500).json({ error: 'Failed to add laptop' });
+    res.status(500).json({ error: 'Failed to add laptop', details: err.message });
   }
 });
-
 
 
 
