@@ -434,7 +434,13 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
 });
 
 
-
+app.get('/api/images/:filename', (req, res) => {
+  if (!gfsBucket) return res.status(503).send('Storage not ready');
+  
+  const downloadStream = gfsBucket.openDownloadStreamByName(req.params.filename);
+  downloadStream.on('error', () => res.status(404).send('Image not found'));
+  downloadStream.pipe(res);
+});
 
 // Updated helper function to handle all categories
 async function updateBrandCollection(category, brand, model) {
