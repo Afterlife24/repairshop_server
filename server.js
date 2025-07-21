@@ -13,13 +13,20 @@ const serverless = require('serverless-http');
 const app = express();
 const PORT = process.env.PORT || 5000;
 // Middleware
+const cors = require('cors');
+const express = require('express');
+const app = express();
+
 app.use(cors({
-  origin: '*', // Your frontend URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: '*', // or use specific array if preferred
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
-// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.options('*', cors()); // 👈 Add this line to handle preflight
+
 app.use(express.json({ limit: '10mb' }));
+
 
 
 // MongoDB Connection
@@ -434,24 +441,18 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
 });
 
 
-app.get('/api/images/:filename', async (req, res) => {
-  try {
-    const client = await MongoClient.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
-    const db = client.db('test');
-    const bucket = new GridFSBucket(db, { bucketName: 'uploads' }); // or whatever you used
+app.get('/api/images/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'uploads', filename);
 
-    const downloadStream = bucket.openDownloadStreamByName(req.params.filename);
-    
-    downloadStream.on('error', () => {
-      res.status(404).send('Image not found');
-    });
+  // Determine correct MIME type
+  const mimeType = mime.lookup(filePath); // use 'mime-types' package
+  res.setHeader('Content-Type', mimeType || 'application/octet-stream');
 
-    downloadStream.pipe(res);
-  } catch (err) {
-    console.error('Error streaming image:', err);
-    res.status(500).send({ error: 'Failed to load image', details: err.message });
-  }
+  // Do NOT set 'Content-Disposition' as attachment
+  res.sendFile(filePath);
 });
+
 
 // Updated helper function to handle all categories
 async function updateBrandCollection(category, brand, model) {
