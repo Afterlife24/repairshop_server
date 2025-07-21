@@ -23,8 +23,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.options('*', cors()); // 👈 Add this line to handle preflight
-
 app.use(express.json({ limit: '10mb' }));
 
 

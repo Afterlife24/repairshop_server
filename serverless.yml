@@ -10,10 +10,7 @@ provider:
   httpApi:
     cors: 
       allowedOrigins:
-        - https://www.smartphonecity.afterlife.org.in
-        - https://www.smartphonecity-admin.afterlife.org.in
-        - http://localhost:5173
-        - http://localhost:3000
+        - "*"
       allowedMethods:
         - GET
         - POST
