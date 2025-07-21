@@ -690,16 +690,15 @@ app.get('/api/products/mobiles', async (req, res) => {
   }
 });
 
-// Get single product by ID
 app.get('/api/products/:id', async (req, res) => {
   try {
     const product = await Mobile.findOne({ id: req.params.id }) || 
-                   await Laptop.findOne({ id: req.params.id });
-    
+                    await Laptop.findOne({ id: req.params.id });
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    
+
     res.json(product);
   } catch (err) {
     console.error('Error fetching product:', err);
@@ -708,20 +707,42 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 
+app.delete('/api/products/delete/:type/:id', async (req, res) => {
+  try {
+    let { type, id } = req.params;
+    const normalizedType = type.toLowerCase().replace(/s$/, ''); // Remove trailing 's'
 
-// DELETE mobile by ID
+    if (!['mobile', 'laptop'].includes(normalizedType)) {
+      return res.status(400).json({ message: 'Invalid product type' });
+    }
+
+    const Model = normalizedType === 'mobile' ? Mobile : Laptop;
+
+    const product = await Model.findOne({ id });
+    if (!product) {
+      return res.status(404).json({ message: `${normalizedType} not found` });
+    }
+
+    const imagePath = path.join(__dirname, product.image || '');
+    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+
+    await Model.deleteOne({ id });
+    res.json({ message: `${normalizedType} deleted successfully` });
+
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ message: 'Failed to delete product' });
+  }
+});
+
+
 app.delete('/api/products/delete-mobile/:id', async (req, res) => {
   try {
     const mobile = await Mobile.findOne({ id: req.params.id });
-    if (!mobile) {
-      return res.status(404).json({ message: 'Mobile not found' });
-    }
+    if (!mobile) return res.status(404).json({ message: 'Mobile not found' });
 
-    // Delete the associated image file
-    const imagePath = path.join(__dirname, mobile.image);
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
+    const imagePath = path.join(__dirname, mobile.image || '');
+    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
     await Mobile.deleteOne({ id: req.params.id });
     res.json({ message: 'Mobile deleted successfully' });
@@ -730,20 +751,13 @@ app.delete('/api/products/delete-mobile/:id', async (req, res) => {
     res.status(500).json({ message: 'Failed to delete mobile' });
   }
 });
-
-// DELETE laptop by ID
 app.delete('/api/products/delete-laptop/:id', async (req, res) => {
   try {
     const laptop = await Laptop.findOne({ id: req.params.id });
-    if (!laptop) {
-      return res.status(404).json({ message: 'Laptop not found' });
-    }
+    if (!laptop) return res.status(404).json({ message: 'Laptop not found' });
 
-    // Delete the associated image file
-    const imagePath = path.join(__dirname, laptop.image);
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
+    const imagePath = path.join(__dirname, laptop.image || '');
+    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
     await Laptop.deleteOne({ id: req.params.id });
     res.json({ message: 'Laptop deleted successfully' });
