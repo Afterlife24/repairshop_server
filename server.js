@@ -32,15 +32,6 @@ app.use(express.json({ limit: '10mb' }));
 const MONGODB_URI = 'mongodb+srv://repairShop:repairShop@repairshopcluster.owizlev.mongodb.net/?retryWrites=true&w=majority&appName=repairShopCluster';
 let gfsBucket;
 
-// mongoose.connect(MONGODB_URI, {
-//   useNewUrlParser: true,
-//   useUnifiedTopology: true,
-//   retryWrites: true,
-//   w: 'majority'
-// })
-// .then(() => console.log('Successfully connected to MongoDB'))
-// .catch(err => console.error('MongoDB connection error:', err));
-
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -55,11 +46,12 @@ mongoose.connect(MONGODB_URI, {
     bucketName: 'uploads'
   });
 
+  // Start server only if not in Lambda environment
   if (process.env.NODE_ENV !== 'lambda') {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  }
 }).catch(err => {
   console.error('MongoDB connection error:', err);
   process.exit(1);
@@ -289,18 +281,40 @@ const fileFilter = (req, file, cb) => {
 // Route to serve images
 app.get('/api/images/:filename', (req, res) => {
   if (!gfsBucket) {
-    return res.status(503).json({ error: 'Storage system not ready' });
+    return res.status(503).json({ 
+      error: 'Storage system not ready',
+      details: 'GridFSBucket has not been initialized'
+    });
   }
 
-  const downloadStream = gfsBucket.openDownloadStreamByName(req.params.filename);
+  const filename = req.params.filename;
   
-  downloadStream.on('error', () => {
-    res.status(404).json({ error: 'File not found' });
-  });
-  
-  downloadStream.pipe(res);
-});
+  // First check if file exists
+  const filesCollection = mongoose.connection.db.collection('uploads.files');
+  filesCollection.findOne({ filename }, (err, file) => {
+    if (err || !file) {
+      return res.status(404).json({ 
+        error: 'File not found',
+        filename: filename
+      });
+    }
 
+    // If file exists, create download stream
+    const downloadStream = gfsBucket.openDownloadStreamByName(filename);
+    
+    downloadStream.on('error', (err) => {
+      console.error('Download stream error:', err);
+      res.status(500).json({ 
+        error: 'Error streaming file',
+        details: err.message 
+      });
+    });
+    
+    // Set proper content type
+    res.set('Content-Type', file.contentType || 'application/octet-stream');
+    downloadStream.pipe(res);
+  });
+});
 // Update your route handler
 app.get('/api/products/:type', async (req, res) => {
   try {
