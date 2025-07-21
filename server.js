@@ -13,15 +13,16 @@ const serverless = require('serverless-http');
 const app = express();
 const PORT = process.env.PORT || 5000;
 // Middleware
-const cors = require('cors');
-const express = require('express');
 
 
 app.use(cors({
-  origin: '*', // or use specific array if preferred
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: '*', // Your frontend URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  
 }));
+app.use(express.json());
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 
 app.use(express.json({ limit: '10mb' }));
 
