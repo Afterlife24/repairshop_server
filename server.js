@@ -31,6 +31,7 @@ app.use(express.json({ limit: '10mb' }));
 // MongoDB Connection
 const MONGODB_URI = 'mongodb+srv://repairShop:repairShop@repairshopcluster.owizlev.mongodb.net/?retryWrites=true&w=majority&appName=repairShopCluster';
 let gfsBucket;
+let isDbReady = false;
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
@@ -45,6 +46,7 @@ mongoose.connect(MONGODB_URI, {
   gfsBucket = new GridFSBucket(db, {
     bucketName: 'uploads'
   });
+  isDbReady = true;
 
   // Start server only if not in Lambda environment
   if (process.env.NODE_ENV !== 'lambda') {
@@ -55,6 +57,17 @@ mongoose.connect(MONGODB_URI, {
 }).catch(err => {
   console.error('MongoDB connection error:', err);
   process.exit(1);
+});
+
+// Add middleware to check DB readiness
+app.use('/api/images', (req, res, next) => {
+  if (!isDbReady) {
+    return res.status(503).json({ 
+      error: 'Service Unavailable',
+      message: 'Database is initializing, please try again shortly'
+    });
+  }
+  next();
 });
 
 
@@ -288,20 +301,24 @@ app.get('/api/images/:filename', (req, res) => {
   }
 
   const filename = req.params.filename;
-  
-  // First check if file exists
+
   const filesCollection = mongoose.connection.db.collection('uploads.files');
   filesCollection.findOne({ filename }, (err, file) => {
     if (err || !file) {
       return res.status(404).json({ 
         error: 'File not found',
-        filename: filename
+        filename
       });
     }
 
-    // If file exists, create download stream
+    // Set Content-Type to allow browser display
+    res.set('Content-Type', file.contentType || 'application/octet-stream');
+
+    // Remove Content-Disposition to avoid download prompt
+    res.removeHeader('Content-Disposition');
+
     const downloadStream = gfsBucket.openDownloadStreamByName(filename);
-    
+
     downloadStream.on('error', (err) => {
       console.error('Download stream error:', err);
       res.status(500).json({ 
@@ -309,12 +326,11 @@ app.get('/api/images/:filename', (req, res) => {
         details: err.message 
       });
     });
-    
-    // Set proper content type
-    res.set('Content-Type', file.contentType || 'application/octet-stream');
+
     downloadStream.pipe(res);
   });
 });
+
 // Update your route handler
 app.get('/api/products/:type', async (req, res) => {
   try {
@@ -454,17 +470,7 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
 });
 
 
-app.get('/api/images/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(__dirname, 'uploads', filename);
 
-  // Determine correct MIME type
-  const mimeType = mime.lookup(filePath); // use 'mime-types' package
-  res.setHeader('Content-Type', mimeType || 'application/octet-stream');
-
-  // Do NOT set 'Content-Disposition' as attachment
-  res.sendFile(filePath);
-});
 
 
 // Updated helper function to handle all categories
