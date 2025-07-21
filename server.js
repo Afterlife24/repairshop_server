@@ -434,12 +434,23 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
 });
 
 
-app.get('/api/images/:filename', (req, res) => {
-  if (!gfsBucket) return res.status(503).send('Storage not ready');
-  
-  const downloadStream = gfsBucket.openDownloadStreamByName(req.params.filename);
-  downloadStream.on('error', () => res.status(404).send('Image not found'));
-  downloadStream.pipe(res);
+app.get('/api/images/:filename', async (req, res) => {
+  try {
+    const client = await MongoClient.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+    const db = client.db('test');
+    const bucket = new GridFSBucket(db, { bucketName: 'uploads' }); // or whatever you used
+
+    const downloadStream = bucket.openDownloadStreamByName(req.params.filename);
+    
+    downloadStream.on('error', () => {
+      res.status(404).send('Image not found');
+    });
+
+    downloadStream.pipe(res);
+  } catch (err) {
+    console.error('Error streaming image:', err);
+    res.status(500).send({ error: 'Failed to load image', details: err.message });
+  }
 });
 
 // Updated helper function to handle all categories
