@@ -713,8 +713,8 @@ app.get('/api/products/:id', async (req, res) => {
 
 app.delete('/api/products/delete/:type/:id', async (req, res) => {
   try {
-    let { type, id } = req.params;
-    const normalizedType = type.toLowerCase().replace(/s$/, ''); // Remove trailing 's'
+    const { type, id } = req.params;
+    const normalizedType = type.toLowerCase();
 
     if (!['mobile', 'laptop'].includes(normalizedType)) {
       return res.status(400).json({ message: 'Invalid product type' });
@@ -722,15 +722,18 @@ app.delete('/api/products/delete/:type/:id', async (req, res) => {
 
     const Model = normalizedType === 'mobile' ? Mobile : Laptop;
 
-    const product = await Model.findOne({ id });
+    const product = await Model.findById(id); // <-- correct
     if (!product) {
       return res.status(404).json({ message: `${normalizedType} not found` });
     }
 
+    // delete the image from filesystem if exists
     const imagePath = path.join(__dirname, product.image || '');
-    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+    if (fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+    }
 
-    await Model.deleteOne({ id });
+    await Model.findByIdAndDelete(id); // <-- correct
     res.json({ message: `${normalizedType} deleted successfully` });
 
   } catch (err) {
@@ -738,6 +741,7 @@ app.delete('/api/products/delete/:type/:id', async (req, res) => {
     res.status(500).json({ message: 'Failed to delete product' });
   }
 });
+
 
 
 app.delete('/api/products/delete-mobile/:id', async (req, res) => {
