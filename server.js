@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 const cors = require('cors');
 const express = require('express');
-const app = express();
+
 
 app.use(cors({
   origin: '*', // or use specific array if preferred
