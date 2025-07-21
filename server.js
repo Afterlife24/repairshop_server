@@ -60,15 +60,7 @@ mongoose.connect(MONGODB_URI, {
 });
 
 // Add middleware to check DB readiness
-app.use('/api/images', (req, res, next) => {
-  if (!isDbReady) {
-    return res.status(503).json({ 
-      error: 'Service Unavailable',
-      message: 'Database is initializing, please try again shortly'
-    });
-  }
-  next();
-});
+
 
 
 
@@ -292,43 +284,49 @@ const fileFilter = (req, file, cb) => {
 
 
 // Route to serve images
-app.get('/api/images/:filename', (req, res) => {
-  if (!gfsBucket) {
-    return res.status(503).json({ 
-      error: 'Storage system not ready',
-      details: 'GridFSBucket has not been initialized'
-    });
-  }
-
-  const filename = req.params.filename;
-
-  const filesCollection = mongoose.connection.db.collection('uploads.files');
-  filesCollection.findOne({ filename }, (err, file) => {
-    if (err || !file) {
-      return res.status(404).json({ 
-        error: 'File not found',
-        filename
+app.get('/api/images/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    
+    if (!gfsBucket) {
+      console.error('GridFSBucket not initialized');
+      return res.status(500).json({ 
+        error: 'Storage system error',
+        message: 'Image storage is not available'
       });
     }
 
-    // Set Content-Type to allow browser display
-    res.set('Content-Type', file.contentType || 'application/octet-stream');
-
-    // Remove Content-Disposition to avoid download prompt
-    res.removeHeader('Content-Disposition');
+    const filesCollection = mongoose.connection.db.collection('uploads.files');
+    const file = await filesCollection.findOne({ filename });
+    
+    if (!file) {
+      return res.status(404).json({ 
+        error: 'File not found',
+        filename: filename
+      });
+    }
 
     const downloadStream = gfsBucket.openDownloadStreamByName(filename);
-
+    
     downloadStream.on('error', (err) => {
       console.error('Download stream error:', err);
-      res.status(500).json({ 
-        error: 'Error streaming file',
-        details: err.message 
-      });
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'Error streaming file',
+          details: err.message 
+        });
+      }
     });
-
+    
+    res.set('Content-Type', file.contentType || 'image/jpeg');
     downloadStream.pipe(res);
-  });
+  } catch (err) {
+    console.error('Image serving error:', err);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
 });
 
 // Update your route handler
