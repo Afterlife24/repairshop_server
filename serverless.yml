@@ -7,8 +7,6 @@ provider:
   region: eu-west-3  
   environment:
     MONGO_URI: ${env:MONGO_URI}
-  deploymentBucket:
-    name: smartphonecity-images
   httpApi:
     cors: 
       allowedOrigins:
