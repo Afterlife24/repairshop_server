@@ -8,16 +8,11 @@ const serverless = require('serverless-http');
 const AWS = require('aws-sdk');
 
 // Configure AWS S3 with hardcoded credentials
-require('dotenv').config(); // Load .env variables
-
-
-
 const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
+  accessKeyId: 'AKIA5KJIHUVAIDKVWUO4',      // Replace with your actual access key
+  secretAccessKey: 'PiXs5mDstrbHT4zzTOFryF0+AZTTKExdZsrlXRQB',  // Replace with your actual secret key
+  region: 'eu-west-3'                   // e.g., 'us-east-1'
 });
-
 
 const S3_BUCKET_NAME = 'smartphonecity-images';  // Replace with your actual bucket name
 
