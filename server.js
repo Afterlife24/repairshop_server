@@ -3,12 +3,18 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
-const { GridFSBucket } = require('mongodb');
-const crypto = require('crypto');
 const serverless = require('serverless-http');
 
+const AWS = require('aws-sdk');
 
+// Configure AWS S3 with hardcoded credentials
+const s3 = new AWS.S3({
+  accessKeyId: 'AKIA5KJIHUVAIDKVWUO4',      // Replace with your actual access key
+  secretAccessKey: 'PiXs5mDstrbHT4zzTOFryF0+AZTTKExdZsrlXRQB',  // Replace with your actual secret key
+  region: 'eu-west-3'                   // e.g., 'us-east-1'
+});
+
+const S3_BUCKET_NAME = 'smartphonecity-images';  // Replace with your actual bucket name
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,7 +36,6 @@ app.use(express.json({ limit: '10mb' }));
 
 // MongoDB Connection
 const MONGODB_URI = 'mongodb+srv://repairShop:repairShop@repairshopcluster.owizlev.mongodb.net/?retryWrites=true&w=majority&appName=repairShopCluster';
-let gfsBucket;
 let isDbReady = false;
 
 mongoose.connect(MONGODB_URI, {
@@ -42,11 +47,7 @@ mongoose.connect(MONGODB_URI, {
   console.log('Successfully connected to MongoDB');
   
   // Initialize GridFSBucket
-  const db = mongoose.connection.db;
-  gfsBucket = new GridFSBucket(db, {
-    bucketName: 'uploads'
-  });
-  isDbReady = true;
+
 
   // Start server only if not in Lambda environment
   if (process.env.NODE_ENV !== 'lambda') {
@@ -255,12 +256,10 @@ const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
 
 
 
-let gfs;
 
 
-const storage = new multer.memoryStorage();
-const upload = multer({ 
-  storage: storage,
+const upload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
@@ -284,50 +283,7 @@ const fileFilter = (req, file, cb) => {
 
 
 // Route to serve images
-app.get('/api/images/:filename', async (req, res) => {
-  try {
-    const filename = req.params.filename;
-    
-    if (!gfsBucket) {
-      console.error('GridFSBucket not initialized');
-      return res.status(500).json({ 
-        error: 'Storage system error',
-        message: 'Image storage is not available'
-      });
-    }
 
-    const filesCollection = mongoose.connection.db.collection('uploads.files');
-    const file = await filesCollection.findOne({ filename });
-    
-    if (!file) {
-      return res.status(404).json({ 
-        error: 'File not found',
-        filename: filename
-      });
-    }
-
-    const downloadStream = gfsBucket.openDownloadStreamByName(filename);
-    
-    downloadStream.on('error', (err) => {
-      console.error('Download stream error:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          error: 'Error streaming file',
-          details: err.message 
-        });
-      }
-    });
-    
-    res.set('Content-Type', file.contentType || 'image/jpeg');
-    downloadStream.pipe(res);
-  } catch (err) {
-    console.error('Image serving error:', err);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  }
-});
 
 // Update your route handler
 app.get('/api/products/:type', async (req, res) => {
@@ -353,62 +309,62 @@ app.get('/api/products/:type', async (req, res) => {
 
 
 // Add mobile product
+// Helper function for S3 upload
+const uploadToS3 = (fileBuffer, fileName, mimetype) => {
+  const params = {
+    Bucket: S3_BUCKET_NAME,
+    Key: fileName,
+    Body: fileBuffer,
+    ContentType: mimetype,
+    ACL: 'public-read',
+  };
+
+  return s3.upload(params).promise();
+};
+
+// Updated add-mobile endpoint
 app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Image is required' });
     }
 
-    if (!gfsBucket) {
-      return res.status(503).json({ error: 'Storage system not ready' });
-    }
-
     // Generate unique filename
-    const filename = crypto.randomBytes(16).toString('hex') + path.extname(req.file.originalname);
+    const fileName = `mobile-${Date.now()}${path.extname(req.file.originalname)}`;
     
-    // Create upload stream
-    const uploadStream = gfsBucket.openUploadStream(filename, {
-      contentType: req.file.mimetype
+    // Upload to S3
+    const s3Response = await uploadToS3(
+      req.file.buffer,
+      fileName,
+      req.file.mimetype
+    );
+
+    const mobile = new Mobile({
+      id: req.body.id,
+      name: req.body.name,
+      brand: req.body.brand,
+      price: req.body.price,
+      originalPrice: req.body.originalPrice,
+      discount: req.body.discount,
+      image: s3Response.Location, // S3 URL
+      type: 'mobile',
+      features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
+      rating: Number(req.body.rating) || 0,
+      reviews: Number(req.body.reviews) || 0,
+      description: req.body.description,
+      category: req.body.category,
+      inStock: req.body.inStock === 'true'
     });
 
-    uploadStream.on('error', () => {
-      res.status(500).json({ error: 'Failed to store image' });
-    });
-
-    uploadStream.on('finish', async () => {
-      try {
-        const imagePath = `/api/images/${filename}`;
-        const mobile = new Mobile({
-          id: req.body.id,
-          name: req.body.name,
-          brand: req.body.brand,
-          price: req.body.price,
-          originalPrice: req.body.originalPrice,
-          discount: req.body.discount,
-          image: imagePath,
-          type: 'mobile',
-          features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
-          rating: Number(req.body.rating) || 0,
-          reviews: Number(req.body.reviews) || 0,
-          description: req.body.description,
-          category: req.body.category,
-          inStock: req.body.inStock === 'true'
-        });
-
-        await mobile.save();
-        res.status(201).json({ message: 'Mobile added successfully', product: mobile });
-      } catch (err) {
-        console.error('Error saving mobile:', err);
-        res.status(500).json({ error: 'Failed to save product', details: err.message });
-      }
-    });
-
-    uploadStream.end(req.file.buffer);
+    await mobile.save();
+    res.status(201).json({ message: 'Mobile added successfully', product: mobile });
   } catch (err) {
     console.error('Error adding mobile:', err);
     res.status(500).json({ error: 'Failed to add mobile', details: err.message });
   }
 });
+
+// Similarly update the add-laptop endpoint
 
 app.post('/api/products/add-laptop', upload.single('image'), async (req, res) => {
   try {
@@ -416,54 +372,44 @@ app.post('/api/products/add-laptop', upload.single('image'), async (req, res) =>
       return res.status(400).json({ error: 'Image is required' });
     }
 
-    if (!gfsBucket) {
-      return res.status(503).json({ error: 'Storage system not ready' });
-    }
-
     // Generate unique filename
-    const filename = crypto.randomBytes(16).toString('hex') + path.extname(req.file.originalname);
+    const fileName = `laptop-${Date.now()}${path.extname(req.file.originalname)}`;
     
-    // Create upload stream
-    const uploadStream = gfsBucket.openUploadStream(filename, {
-      contentType: req.file.mimetype
+    // Upload to S3
+    const s3Response = await uploadToS3(
+      req.file.buffer,
+      fileName,
+      req.file.mimetype
+    );
+
+    const laptop = new Laptop({
+      id: req.body.id,
+      name: req.body.name,
+      brand: req.body.brand,
+      price: req.body.price,
+      originalPrice: req.body.originalPrice,
+      discount: req.body.discount,
+      image: s3Response.Location, // S3 URL
+      type: 'laptop',
+      features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
+      rating: Number(req.body.rating) || 0,
+      reviews: Number(req.body.reviews) || 0,
+      description: req.body.description,
+      category: req.body.category,
+      inStock: req.body.inStock === 'true'
     });
 
-    uploadStream.on('error', () => {
-      res.status(500).json({ error: 'Failed to store image' });
+    await laptop.save();
+    res.status(201).json({ 
+      message: 'Laptop added successfully', 
+      product: laptop 
     });
-
-    uploadStream.on('finish', async () => {
-      try {
-        const imagePath = `/api/images/${filename}`;
-        const laptop = new Laptop({
-          id: req.body.id,
-          name: req.body.name,
-          brand: req.body.brand,
-          price: req.body.price,
-          originalPrice: req.body.originalPrice,
-          discount: req.body.discount,
-          image: imagePath,
-          type: 'laptop',
-          features: req.body.features ? req.body.features.split(',').map(f => f.trim()) : [],
-          rating: Number(req.body.rating) || 0,
-          reviews: Number(req.body.reviews) || 0,
-          description: req.body.description,
-          category: req.body.category,
-          inStock: req.body.inStock === 'true'
-        });
-
-        await laptop.save();
-        res.status(201).json({ message: 'Laptop added successfully', product: laptop });
-      } catch (err) {
-        console.error('Error saving laptop:', err);
-        res.status(500).json({ error: 'Failed to save product', details: err.message });
-      }
-    });
-
-    uploadStream.end(req.file.buffer);
   } catch (err) {
     console.error('Error adding laptop:', err);
-    res.status(500).json({ error: 'Failed to add laptop', details: err.message });
+    res.status(500).json({ 
+      error: 'Failed to add laptop', 
+      details: err.message 
+    });
   }
 });
 
@@ -711,6 +657,18 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 
+// Helper function to delete from S3
+const deleteFromS3 = (fileUrl) => {
+  const key = fileUrl.split('/').pop();
+  const params = {
+    Bucket: S3_BUCKET_NAME,
+    Key: key
+  };
+
+  return s3.deleteObject(params).promise();
+};
+
+// Updated delete endpoint
 app.delete('/api/products/delete/:type/:id', async (req, res) => {
   try {
     const { type, id } = req.params;
@@ -721,21 +679,23 @@ app.delete('/api/products/delete/:type/:id', async (req, res) => {
     }
 
     const Model = normalizedType === 'mobile' ? Mobile : Laptop;
-
-    const product = await Model.findById(id); // <-- correct
+    const product = await Model.findById(id);
+    
     if (!product) {
       return res.status(404).json({ message: `${normalizedType} not found` });
     }
 
-    // delete the image from filesystem if exists
-    const imagePath = path.join(__dirname, product.image || '');
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    // Delete from S3 if image exists
+    if (product.image) {
+      try {
+        await deleteFromS3(product.image);
+      } catch (s3Err) {
+        console.error('Error deleting from S3:', s3Err);
+      }
     }
 
-    await Model.findByIdAndDelete(id); // <-- correct
+    await Model.findByIdAndDelete(id);
     res.json({ message: `${normalizedType} deleted successfully` });
-
   } catch (err) {
     console.error('Error deleting product:', err);
     res.status(500).json({ message: 'Failed to delete product' });
