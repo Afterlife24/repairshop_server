@@ -16,6 +16,7 @@
     "serverless-offline": "^14.4.0"
   },
   "dependencies": {
+    "aws-sdk": "^2.1692.0",
     "aws-serverless-express": "^3.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
