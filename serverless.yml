@@ -33,6 +33,6 @@ plugins:
   - serverless-offline
 
 package:
-  exclude:
+  include:
     - node_modules/aws-sdk/**
 
