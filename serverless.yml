@@ -6,6 +6,7 @@ provider:
   runtime: nodejs18.x
   region: eu-west-3  
   environment:
+    NODE_ENV: lambda
     MONGO_URI: ${env:MONGO_URI}
   httpApi:
     cors: 
