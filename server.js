@@ -7,6 +7,7 @@ const serverless = require('serverless-http');
 
 const AWS = require('aws-sdk');
 
+
 // Configure AWS S3 with hardcoded credentials
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,      // Replace with your actual access key
