@@ -1,17 +1,19 @@
 service: repairshop-api
 
-
 provider:
   name: aws
   runtime: nodejs18.x
-  region: eu-west-3  
+  region: eu-west-3
+  timeout: 30            # overall default timeout (seconds)
+  memorySize: 1024       # default memory size for functions
   environment:
     NODE_ENV: lambda
     MONGO_URI: ${env:MONGO_URI}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'  # reuse connections for better cold starts
   httpApi:
-    cors: 
+    cors:
       allowedOrigins:
-        - "*"
+        - "*"              # tighten this to your frontend origin in production
       allowedMethods:
         - GET
         - POST
@@ -24,7 +26,9 @@ provider:
 
 functions:
   app:
-    handler: lambda.handler
+    handler: server.handler   # points to server.js's exported handler
+    timeout: 30               # explicit per-function timeout (optional)
+    memorySize: 1024          # per-function memory (optional)
     events:
       - httpApi:
           path: /{proxy+}
@@ -36,4 +40,3 @@ plugins:
 package:
   include:
     - node_modules/aws-sdk/**
-
