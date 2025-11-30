@@ -32,37 +32,45 @@ app.use(cors({
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
-// Ensure OPTIONS for all routes respond (helps API Gateway preflight)
-app.options('*', cors());
+
+// Short-circuit OPTIONS preflight immediately (before heavy middleware)
+app.options('*', (req, res) => res.sendStatus(204));
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection
+// --- MongoDB connection (non-blocking, reuse across invocations) ---
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://repairShop:repairShop@repairshopcluster.owizlev.mongodb.net/?retryWrites=true&w=majority&appName=repairShopCluster';
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  retryWrites: true,
-  w: 'majority'
-}).then(() => {
-  console.log('Successfully connected to MongoDB');
+let mongoosePromise = null;
+const connectToMongo = () => {
+  if (mongoose.connection.readyState === 1) return Promise.resolve();
+  if (mongoosePromise) return mongoosePromise;
 
-  // Start server only if not running as Lambda (for local dev)
-  if (process.env.NODE_ENV !== 'lambda') {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  }
-}).catch(err => {
-  console.error('MongoDB connection error:', err);
-  // don't exit when running in lambda (let lambda handle retries)
-  if (process.env.NODE_ENV !== 'lambda') process.exit(1);
-});
+  mongoosePromise = mongoose.connect(MONGODB_URI, {
+    // removed deprecated options
+    retryWrites: true,
+    w: 'majority'
+  }).then(() => {
+    console.log('Successfully connected to MongoDB');
+  }).catch(err => {
+    console.error('MongoDB connection error (non-fatal):', err);
+    // reset so we can retry later
+    mongoosePromise = null;
+  });
 
-// Schemas & Models (kept from your original file)
+  return mongoosePromise;
+};
+
+// Kick off connection in background for cold start, but do not await here
+connectToMongo();
+
+// Models & schemas (same as before)
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
   brand: { type: String, required: true, trim: true },
@@ -102,13 +110,13 @@ const appointmentSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'appointments' });
 
-const Mobile = mongoose.model('Mobile', productSchema);
-const Laptop = mongoose.model('Laptop', productSchema);
-const Tablet = mongoose.model('Tablet', productSchema);
-const Console = mongoose.model('Console', productSchema);
-const Appointment = mongoose.model('Appointment', appointmentSchema);
+const Mobile = mongoose.models.Mobile || mongoose.model('Mobile', productSchema);
+const Laptop = mongoose.models.Laptop || mongoose.model('Laptop', productSchema);
+const Tablet = mongoose.models.Tablet || mongoose.model('Tablet', productSchema);
+const Console = mongoose.models.Console || mongoose.model('Console', productSchema);
+const Appointment = mongoose.models.Appointment || mongoose.model('Appointment', appointmentSchema);
 
-// Repair schemas & brand schemas (kept)
+// Repair schemas & brand schemas
 const mobileRepairSchema = new mongoose.Schema({
   brand: { type: String, required: true },
   model: { type: String, required: true },
@@ -158,15 +166,15 @@ const laptopBrandSchema = new mongoose.Schema({ name: { type: String, required: 
 const tabletBrandSchema = new mongoose.Schema({ name: { type: String, required: true, unique: true }, models: [String], repairCount: { type: Number, default: 0 } }, { timestamps: true });
 const consoleBrandSchema = new mongoose.Schema({ name: { type: String, required: true, unique: true }, models: [String], repairCount: { type: Number, default: 0 } }, { timestamps: true });
 
-const MobileRepair = mongoose.model('MobileRepair', mobileRepairSchema);
-const LaptopRepair = mongoose.model('LaptopRepair', laptopRepairSchema);
-const TabletRepair = mongoose.model('TabletRepair', tabletRepairSchema);
-const ConsoleRepair = mongoose.model('ConsoleRepair', consoleRepairSchema);
+const MobileRepair = mongoose.models.MobileRepair || mongoose.model('MobileRepair', mobileRepairSchema);
+const LaptopRepair = mongoose.models.LaptopRepair || mongoose.model('LaptopRepair', laptopRepairSchema);
+const TabletRepair = mongoose.models.TabletRepair || mongoose.model('TabletRepair', tabletRepairSchema);
+const ConsoleRepair = mongoose.models.ConsoleRepair || mongoose.model('ConsoleRepair', consoleRepairSchema);
 
-const MobileBrand = mongoose.model('MobileBrand', mobileBrandSchema);
-const LaptopBrand = mongoose.model('LaptopBrand', laptopBrandSchema);
-const TabletBrand = mongoose.model('TabletBrand', tabletBrandSchema);
-const ConsoleBrand = mongoose.model('ConsoleBrand', consoleBrandSchema);
+const MobileBrand = mongoose.models.MobileBrand || mongoose.model('MobileBrand', mobileBrandSchema);
+const LaptopBrand = mongoose.models.LaptopBrand || mongoose.model('LaptopBrand', laptopBrandSchema);
+const TabletBrand = mongoose.models.TabletBrand || mongoose.model('TabletBrand', tabletBrandSchema);
+const ConsoleBrand = mongoose.models.ConsoleBrand || mongoose.model('ConsoleBrand', consoleBrandSchema);
 
 // Multer setup (memory storage for S3 upload)
 const upload = multer({
@@ -194,8 +202,20 @@ app.get('/api/products/:type', async (req, res) => {
   }
 });
 
-// S3 helper
-const uploadToS3 = (fileBuffer, fileName, mimetype) => {
+// S3 helper with debug logging for credentials
+const uploadToS3 = async (fileBuffer, fileName, mimetype) => {
+  // DEBUG: log which credential provider + accessKeyId (safe to log accessKeyId only)
+  try {
+    if (AWS.config && AWS.config.credentials) {
+      console.log('AWS.config.credentials (kind):', AWS.config.credentials.constructor && AWS.config.credentials.constructor.name);
+      console.log('AWS.config.credentials.accessKeyId:', AWS.config.credentials.accessKeyId || '<none>');
+    } else {
+      console.log('AWS.config.credentials: <not set>');
+    }
+  } catch (dbgErr) {
+    console.error('Error while logging AWS credentials debug:', dbgErr);
+  }
+
   const params = {
     Bucket: S3_BUCKET_NAME,
     Key: fileName,
@@ -208,6 +228,8 @@ const uploadToS3 = (fileBuffer, fileName, mimetype) => {
 
 // Add mobile
 app.post('/api/products/add-mobile', upload.single('image'), async (req, res) => {
+  // ensure Mongo connection attempt started (don't await)
+  connectToMongo();
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
 
@@ -241,6 +263,8 @@ app.post('/api/products/add-mobile', upload.single('image'), async (req, res) =>
 
 // Add laptop
 app.post('/api/products/add-laptop', upload.single('image'), async (req, res) => {
+  // ensure Mongo connection attempt started (don't await)
+  connectToMongo();
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
 
@@ -321,11 +345,6 @@ app.post('/api/repairs', async (req, res) => {
     res.status(500).json({ error: err.message, ...(process.env.NODE_ENV === 'development' && { stack: err.stack }) });
   }
 });
-
-// Many read endpoints kept as-is (brands, repairs, products, appointments...) - omitted here to keep file shorter,
-// but in your actual file you can keep the remaining endpoints exactly as you had them.
-// For brevity in this snippet, make sure you re-add the rest of your GET/PUT/DELETE endpoints below if you trimmed.
-
 
 // Example minimal remaining endpoints (keep your full list in your file)
 app.get('/api/products/mobiles', async (req, res) => {
